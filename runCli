@@ -1,0 +1,7 @@
+#!/bin/bash
+#set -o errexit  #出错退出
+#set +o errexit # 出错不退出
+
+export CLI_JSONDIR=`pwd`/cli/json
+export LD_LIBRARY_PATH=`pwd`/cli/lib:$LD_LIBRARY_PATH
+./cli/bin/cli

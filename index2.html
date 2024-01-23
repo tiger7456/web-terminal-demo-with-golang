@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Web Terminal</title>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@4.9.0/lib/xterm.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@4.9.0/lib/xterm.css" />
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden; /* 防止出现滚动条 */
+        }
+        #terminal-container {
+            width: 100%;
+            height: 100%;
+            background-color: black;
+        }
+    </style>
+</head>
+<body>
+<div id="terminal-container"></div>
+
+<script>
+    const term = new Terminal();
+    const socket = new WebSocket(`ws://${window.location.host}/ws`); // 创建WebSocket连接
+    // const socket = new WebSocket('ws://${window.location.host}/ws');
+    const container = document.getElementById('terminal-container');
+    term.open(container);
+    term.onData(data => socket.send(data));
+    term.onResize(({cols, rows}) => {
+        console.log('onResize:', cols, rows);
+        socket.send(JSON.stringify({action: 'resize', cols, rows}));
+    });
+
+    socket.onmessage = (event) => {
+        console.log('onmessage:',event.data);
+        term.write(event.data);
+    };
+
+    socket.onopen = () => {
+        console.log('onopen:',term.cols, term.rows);
+        // term.resize(term.cols, term.rows);
+        // 当WebSocket连接打开时，将终端的大小发送到服务器
+        const size = { cols: term.cols, rows: term.rows };
+        socket.send(JSON.stringify({ action: 'resize', ...size }));
+    };
+
+    // 添加一个函数来根据终端容器的大小调整终端的大小
+    function resizeTerminal() {
+        // 计算容器的宽度和高度，转换为列和行的数量
+        const charWidth = Math.ceil(term._core._renderService.dimensions.actualCellWidth);
+        const charHeight = Math.ceil(term._core._renderService.dimensions.actualCellHeight);
+        // 伪代码，根据您的布局和样式计算列和行的数量
+        const cols = Math.floor(container.offsetWidth / charWidth);
+        const rows = Math.floor(container.offsetHeight / charHeight);
+
+        // 调整终端大小
+        term.resize(cols, rows);
+
+        // 将新的大小发送到服务器
+        console.log('resizeTerminal:', cols, rows);
+        socket.send(JSON.stringify({ action: 'resize', cols, rows }));
+    }
+
+    // 监听窗口大小变化事件并调整终端大小
+    window.addEventListener('resize', () => {
+        // 为了防止出现滚动条，我们在调整大小之前禁用滚动
+        document.documentElement.style.overflow = 'hidden';
+        resizeTerminal();
+        // 调整大小后，重新启用滚动（如果需要）
+        document.documentElement.style.overflow = '';
+    });
+    // 在初始化时调整终端大小
+    resizeTerminal();
+</script>
+</body>
+</html>

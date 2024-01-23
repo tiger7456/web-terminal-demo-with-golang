@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>WebTerminal</title>
+<!--    <link rel="stylesheet" href="./node_modules/xterm/css/xterm.css" />-->
+<!--    <script src="./node_modules/xterm/lib/xterm.js"></script>-->
+    <script src="https://unpkg.com/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <script src="https://unpkg.com/xterm@5.1.0/lib/xterm.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/xterm/css/xterm.css" />
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+        }
+        #terminal {
+            width: 100%;
+            height: 100%;
+            background-color: black;
+        }
+        #reconnect-message {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            text-align: center;
+            padding: 10px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+<!--    <div style="width: 100%; height: 100vh;">-->
+        <!-- 目前版本的 Xterm 5.1.0 默认串口大小 24x80 -->
+        <div id="terminal"></div>
+<div id="reconnect-message">连接已断开，正在尝试重新连接...</div>
+<!--    </div>-->
+    <script>
+        const term = new Terminal();
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        const container = document.querySelector('#terminal');
+        term.open(container); // 挂载
+
+        const socket = new WebSocket(`ws://${window.location.host}/ws`); // 创建WebSocket连接
+
+        term.onData((data) => { // 网页xterm窗口中有输入的数据
+            // console.log('term.onData:', data);
+            socket.send(data); // 通过WebSocket发送给服务器
+        });
+        
+        socket.onmessage = (event) => { // 收到来自服务器的WebSocket消息
+            // console.log('socket.onmessage:', event.data);
+            term.write(event.data); // 向xterm对象写入数据
+        };
+
+        term.onResize(({cols, rows}) => {
+            console.log('onResize:', cols, rows);
+            socket.send(JSON.stringify({action: 'resize', cols, rows}));
+        });
+
+        socket.onopen = () => {
+            fitAddon.fit(); // 调整终端大小以适应容器
+            console.log('onopen:',term.cols, term.rows);
+            // term.resize(term.cols, term.rows);
+            // 当WebSocket连接打开时，将终端的大小发送到服务器
+            const size = { cols: term.cols, rows: term.rows };
+            socket.send(JSON.stringify({ action: 'resize', ...size }));
+        };
+        socket.onclose = () => {
+            document.getElementById('reconnect-message').style.display = 'block';
+            setTimeout(() => {
+                // 尝试重新连接
+                window.location.reload();
+            }, 5000); // 5秒后尝试重新连接
+        };
+        // 添加一个函数来根据终端容器的大小调整终端的大小
+        function resizeTerminal() {
+            // 计算容器的宽度和高度，转换为列和行的数量
+            const charWidth = Math.ceil(term._core._renderService.dimensions.actualCellWidth);
+            const charHeight = Math.ceil(term._core._renderService.dimensions.actualCellHeight);
+            // 伪代码，根据您的布局和样式计算列和行的数量
+            const cols = Math.floor(container.offsetWidth / charWidth);
+            const rows = Math.floor(container.offsetHeight / charHeight);
+
+            // 调整终端大小
+            term.resize(cols, rows);
+
+            // 将新的大小发送到服务器
+            console.log('resizeTerminal:', cols, rows);
+            socket.send(JSON.stringify({ action: 'resize', cols, rows }));
+        }
+
+        // 监听窗口大小变化事件并调整终端大小
+        window.addEventListener('resize', () => {
+            fitAddon.fit(); // 调整终端大小以适应容器
+            // 为了防止出现滚动条，我们在调整大小之前禁用滚动
+            // document.documentElement.style.overflow = 'hidden';
+            resizeTerminal();
+            // 调整大小后，重新启用滚动（如果需要）
+            // document.documentElement.style.overflow = '';
+        });
+        // 在初始化时调整终端大小
+        resizeTerminal();
+    </script>
+</body>
+
+</html>
